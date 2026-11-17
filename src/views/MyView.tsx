@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { PlayableRole } from '../content'
 import { ROLE_INFO } from '../app/nav'
 import { MiniTerminal } from '../components/editor/MiniTerminal'
@@ -9,6 +9,7 @@ import { Board } from '../components/jira/Board'
 import { LevelMap } from '../components/LevelMap'
 import { ChatPanel } from '../components/jira/ChatPanel'
 import { PlayTour } from '../components/PlayTour'
+import { Splitter } from '../components/Splitter'
 import { PullRequestPanel } from '../components/pipeline/PullRequestPanel'
 import { Pipeline } from '../components/pipeline/Pipeline'
 import { MistakesReplay } from '../components/popups/MistakesReplay'
@@ -20,7 +21,7 @@ import { PANEL } from '../components/ui'
 import { useLevelStore } from '../store/levelStore'
 import { zoneOf, type Zone } from '../store/nextAction'
 import { useProgressStore } from '../store/progressStore'
-import { useUiStore } from '../store/uiStore'
+import { LAYOUT_LIMITS, useUiStore, type LayoutKey } from '../store/uiStore'
 import { useEnsureLevel } from '../store/useEnsureLevel'
 import { useMediaQuery } from '../utils/useMediaQuery'
 import { ViewIntro } from './ViewIntro'
@@ -57,6 +58,15 @@ export function MyView() {
   const tourStep = useUiStore((s) => s.tourStep)
   const startTour = useUiStore((s) => s.startTour)
   const wide = useMediaQuery(WIDE)
+  // Panel sizes set by the dividers (wide layout only), and the boxes they measure.
+  const layout = useUiStore((s) => s.layout)
+  const setLayout = useUiStore((s) => s.setLayout)
+  const gridRef = useRef<HTMLDivElement>(null)
+  const taskRef = useRef<HTMLElement>(null)
+  const pipelineRef = useRef<HTMLElement>(null)
+  const chatRef = useRef<HTMLDivElement>(null)
+  const graphRef = useRef<HTMLDivElement>(null)
+  const outputRef = useRef<HTMLDivElement>(null)
   const next = useNextAction()
   const playable = role === 'frontend' || role === 'backend'
 
@@ -101,8 +111,21 @@ export function MyView() {
   const zoneMotion = narrow ? ' relative motion-fade' : ' relative'
   const spotPrTab = next?.kind === 'merge' && tab !== 'pr'
 
+  // Dividers. Each reports the panel's size when a drag starts (`size`), saves a new one (`resize`)
+  // and goes back to the default (`reset`). `room` keeps the middle panels from being squeezed shut.
+  const size = (el: HTMLElement | null, axis: 'width' | 'height') => (el ? el.getBoundingClientRect()[axis] : 0)
+  const divider = (key: LayoutKey, el: () => HTMLElement | null, axis: 'width' | 'height', room: () => number) => ({
+    getSize: () => size(el(), axis),
+    onResize: (n: number) => setLayout(key, Math.min(n, room())),
+    onReset: () => setLayout(key, null),
+    min: LAYOUT_LIMITS[key].min,
+    max: LAYOUT_LIMITS[key].max,
+  })
+  const COLUMN_MIN = 420 // the middle column never gets narrower than this
+  const gridRoom = (other: () => HTMLElement | null) => () => size(gridRef.current, 'width') - size(other(), 'width') - COLUMN_MIN - 32
+
   const task = (
-    <section aria-label="Board and chat" {...zoneProps('task')} className={`${PANEL} p-4${narrow ? ' h-[40rem]' : ''}${zoneMotion}`}>
+    <section ref={taskRef} aria-label="Board and chat" {...zoneProps('task')} className={`${PANEL} p-4${narrow ? ' h-[40rem]' : ''}${zoneMotion}`}>
       <header>
         <div className="mb-2 flex items-baseline justify-between gap-2">
           <h2 className="text-body font-medium">Levels</h2>
@@ -113,16 +136,100 @@ export function MyView() {
       <div className="mt-3 min-h-0 flex-[3] overflow-y-auto">
         <Board />
       </div>
-      <div className="mt-3 flex min-h-0 flex-[2] flex-col border-t border-line pt-3">
+      {wide && (
+        <Splitter
+          orientation="horizontal"
+          label="Resize Team chat"
+          invert
+          className="h-3"
+          {...divider('chat', () => chatRef.current, 'height', () => size(taskRef.current, 'height') - 220)}
+        />
+      )}
+      <div
+        ref={chatRef}
+        style={wide && layout.chat ? { height: layout.chat } : undefined}
+        className={`flex min-h-0 flex-col border-t border-line pt-3 ${wide && layout.chat ? 'flex-none' : 'flex-[2]'}${wide ? '' : ' mt-3'}`}
+      >
         <h2 className="mb-2 text-body font-medium">Team chat</h2>
         <ChatPanel />
       </div>
     </section>
   )
 
-  const code = (
-    <section aria-label="Code and Git" {...zoneProps('code')} className={`${PANEL} gap-3 p-4${narrow ? '' : ' overflow-x-hidden overflow-y-auto'}${zoneMotion}`}>
-      {wide && <StepCard />}
+  const outputBox = (
+    // One height for both tabs, so the box does not jump when the pull request opens. On a wide
+    // window the default height follows the window height and a divider above it changes it.
+    <div
+      ref={outputRef}
+      style={wide && layout.output ? { height: layout.output } : undefined}
+      className={`flex shrink-0 flex-col rounded-tag border border-line ${wide && layout.output ? '' : wide ? 'h-[clamp(7rem,19vh,14rem)]' : 'h-72'}`}
+    >
+      <div role="tablist" aria-label="Output" className="flex border-b border-line bg-raised">
+        {(['terminal', 'pr'] as const).map((id) => {
+          const spot = id === 'pr' && spotPrTab
+          return (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={tab === id}
+              onClick={() => setTab(id)}
+              {...spotProps(spot)}
+              className={`-mb-px h-8 border-b-2 px-3 text-caption transition-colors ${
+                tab === id ? 'border-accent bg-card font-medium text-ink' : 'border-transparent text-ink-2 hover:text-ink'
+              }${spotClass(spot)}`}
+            >
+              {id === 'terminal' ? 'Terminal' : 'Pull request'}
+            </button>
+          )
+        })}
+      </div>
+      {/* Keyed by the tab, so the new content fades in once when you switch. */}
+      <div key={tab} className="motion-fade flex min-h-0 flex-1 flex-col p-3">
+        {tab === 'terminal' ? <MiniTerminal /> : <PullRequestPanel />}
+      </div>
+    </div>
+  )
+
+  // Wide: the zone never scrolls. The step card gives up room first (it scrolls inside itself), then
+  // the editor, so the Git buttons are always on screen. The output box is under a divider.
+  // Narrow: as before, the zone grows with its content and the page scrolls.
+  const code = wide ? (
+    <section aria-label="Code and Git" {...zoneProps('code')} className={`${PANEL} gap-3 overflow-hidden p-4${zoneMotion}`}>
+      <div className="min-h-0 shrink overflow-y-auto">
+        <StepCard />
+      </div>
+      <div className="flex min-h-36 flex-1">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <EditorPane />
+        </div>
+        {graphOpen && (
+          <>
+            <Splitter
+              orientation="vertical"
+              label="Resize Git graph"
+              invert
+              className="w-3"
+              {...divider('graph', () => graphRef.current, 'width', () => size(graphRef.current?.parentElement ?? null, 'width') - 240)}
+            />
+            <div ref={graphRef} style={{ width: layout.graph ?? 232 }} className="flex shrink-0">
+              <GitGraph />
+            </div>
+          </>
+        )}
+      </div>
+      <GitButtons />
+      <Splitter
+        orientation="horizontal"
+        label="Resize Terminal and Pull request"
+        invert
+        className="-my-3 h-3"
+        {...divider('output', () => outputRef.current, 'height', () => size(outputRef.current?.parentElement ?? null, 'height') - 340)}
+      />
+      {outputBox}
+    </section>
+  ) : (
+    <section aria-label="Code and Git" {...zoneProps('code')} className={`${PANEL} gap-3 p-4${zoneMotion}`}>
       {/* The editor, with the Git graph beside it when it is open (Phase 7a). On a phone-width
           window the graph goes under the editor instead. */}
       <div className={`flex flex-1 flex-col gap-3 sm:flex-row ${graphOpen ? 'min-h-[30rem]' : 'min-h-56'}`}>
@@ -136,38 +243,12 @@ export function MyView() {
         )}
       </div>
       <GitButtons />
-      {/* One height for both tabs, so the box does not jump when the pull request opens. */}
-      <div className="flex h-72 shrink-0 flex-col rounded-tag border border-line">
-        <div role="tablist" aria-label="Output" className="flex border-b border-line bg-raised">
-          {(['terminal', 'pr'] as const).map((id) => {
-            const spot = id === 'pr' && spotPrTab
-            return (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                aria-selected={tab === id}
-                onClick={() => setTab(id)}
-                {...spotProps(spot)}
-                className={`-mb-px h-8 border-b-2 px-3 text-caption transition-colors ${
-                  tab === id ? 'border-accent bg-card font-medium text-ink' : 'border-transparent text-ink-2 hover:text-ink'
-                }${spotClass(spot)}`}
-              >
-                {id === 'terminal' ? 'Terminal' : 'Pull request'}
-              </button>
-            )
-          })}
-        </div>
-        {/* Keyed by the tab, so the new content fades in once when you switch. */}
-        <div key={tab} className="motion-fade flex min-h-0 flex-1 flex-col p-3">
-          {tab === 'terminal' ? <MiniTerminal /> : <PullRequestPanel />}
-        </div>
-      </div>
+      {outputBox}
     </section>
   )
 
   const pipeline = (
-    <section aria-label="Pipeline" {...zoneProps('pipeline')} className={`${PANEL} p-4${narrow ? ' h-[32rem]' : ''}${zoneMotion}`}>
+    <section ref={pipelineRef} aria-label="Pipeline" {...zoneProps('pipeline')} className={`${PANEL} p-4${narrow ? ' h-[32rem]' : ''}${zoneMotion}`}>
       <h2 className="text-body font-medium">Pipeline</h2>
       <p className="mb-3 mt-1 text-caption text-ink-2">Where your change is on its way to customers.</p>
       <div className="min-h-0 flex-1">
@@ -186,12 +267,26 @@ export function MyView() {
   )
 
   if (wide) {
+    // Three columns with a divider in each gap. A column left at its default keeps its flexible
+    // width; a dragged one gets pixels (capped to a share of the window, so a small window never
+    // overflows).
+    const columns = [
+      layout.left ? `min(${layout.left}px, 38vw)` : 'minmax(280px, 0.8fr)',
+      '16px',
+      `minmax(${COLUMN_MIN}px, 1.5fr)`,
+      '16px',
+      layout.right ? `min(${layout.right}px, 45vw)` : 'minmax(340px, 1fr)',
+    ].join(' ')
     return (
-      <div className="grid h-full grid-cols-[minmax(280px,0.8fr)_minmax(480px,1.5fr)_minmax(340px,1fr)] gap-4">
+      <div className="flex h-full flex-col">
         <h1 className="sr-only">My view</h1>
-        {task}
-        {code}
-        {pipeline}
+        <div ref={gridRef} style={{ gridTemplateColumns: columns }} className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)]">
+          {task}
+          <Splitter orientation="vertical" label="Resize board and chat" {...divider('left', () => taskRef.current, 'width', gridRoom(() => pipelineRef.current))} />
+          {code}
+          <Splitter orientation="vertical" label="Resize pipeline" invert {...divider('right', () => pipelineRef.current, 'width', gridRoom(() => taskRef.current))} />
+          {pipeline}
+        </div>
         {popups}
       </div>
     )

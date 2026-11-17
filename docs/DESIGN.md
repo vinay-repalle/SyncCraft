@@ -43,5 +43,8 @@ These add to the rules above. They do not replace them.
 - **Narrow windows:** no minimum width. Below 1200px My view shows one zone at a time under the step card, and the page scrolls. Every zone still works at 390px.
 - **Height changes:** never animate height. Keep a box one height instead (the output box under the Git buttons).
 
+- **Resizable panels:** on a wide window the dividers between My view panels can be dragged or moved with arrow keys, and a "Default view" button restores the start. A divider is invisible at rest and turns accent colour on hover, focus and drag (colour only, no motion). Every panel has a smallest size, so none can be dragged shut.
+- **Header:** rarely used tools sit behind one "More" button, so a new player sees few controls.
+
 ## Do not
 Rename features, invent claims, or swap one trend (glass, grain, neon, bento) for another.

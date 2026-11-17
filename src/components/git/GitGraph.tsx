@@ -105,7 +105,7 @@ export function GitGraph() {
   const syncLines = graph.sync.filter((s) => s.branch === graph.head || s.branch === 'main')
 
   return (
-    <div className="flex min-h-0 w-[232px] shrink-0 flex-col overflow-hidden rounded-tag border border-line bg-card">
+    <div className="flex min-h-0 w-full shrink-0 flex-col overflow-hidden rounded-tag border border-line bg-card">
       <div className="flex h-8 shrink-0 items-center justify-between border-b border-line bg-raised pr-1 pl-3">
         <h3 className="text-caption font-medium">Git graph</h3>
         <button

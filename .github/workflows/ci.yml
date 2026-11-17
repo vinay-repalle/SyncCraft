@@ -1,0 +1,57 @@
+# CI (continuous integration): every change is checked automatically before it is trusted.
+# It type-checks, runs the tests and builds the site. If any step fails, the run goes red on GitHub.
+#
+# When it runs:
+# - on every push to a branch other than main (main is checked by deploy.yml, which calls this file)
+# - on every pull request into main
+# - when deploy.yml calls it (workflow_call), so main is checked once, right before a deploy
+name: CI
+
+on:
+  push:
+    branches-ignore: [main]
+  pull_request:
+    branches: [main]
+  workflow_call:
+
+# A newer push to the same branch cancels the older run that is still going.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Typecheck, test, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # `npm ci` installs exactly what package-lock.json says, so CI matches your machine.
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      # The built site, kept for deploy.yml and for download from the run page.
+      - name: Keep the build
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist
+          retention-days: 7

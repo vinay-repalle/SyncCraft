@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { safeLocalStorage, TOUR_LENGTH, UI_STORAGE_KEY, useUiStore } from './uiStore'
+import { DEFAULT_LAYOUT, isDefaultLayout, LAYOUT_LIMITS, safeLocalStorage, TOUR_LENGTH, UI_STORAGE_KEY, useUiStore } from './uiStore'
 
 // Node has no localStorage. Some tests put a small stand-in on globalThis, and remove it after.
 const g = globalThis as { localStorage?: unknown }
@@ -16,7 +16,7 @@ function fakeStorage() {
 }
 
 describe('uiStore', () => {
-  beforeEach(() => useUiStore.setState({ view: 'my', guideSlug: null, gitGraphOpen: true, tourDone: false, tourStep: null, playZone: 'code' }))
+  beforeEach(() => useUiStore.setState({ view: 'my', guideSlug: null, gitGraphOpen: true, tourDone: false, tourStep: null, playZone: 'code', layout: DEFAULT_LAYOUT }))
   afterEach(() => {
     delete g.localStorage
   })
@@ -38,7 +38,7 @@ describe('uiStore', () => {
     useUiStore.getState().toggleGitGraph()
     expect(useUiStore.getState().gitGraphOpen).toBe(false)
     const saved = JSON.parse(storage.data.get(UI_STORAGE_KEY)!)
-    expect(saved.state).toEqual({ gitGraphOpen: false, tourDone: false })
+    expect(saved.state).toEqual({ gitGraphOpen: false, tourDone: false, layout: DEFAULT_LAYOUT })
   })
 
   it('reads the saved choice back on rehydrate, and ignores nonsense', async () => {
@@ -76,7 +76,7 @@ describe('uiStore', () => {
     useUiStore.getState().endTour()
     useUiStore.getState().setPlayZone('task')
     expect(useUiStore.getState()).toMatchObject({ tourStep: null, tourDone: true, playZone: 'task' })
-    expect(JSON.parse(storage.data.get(UI_STORAGE_KEY)!).state).toEqual({ gitGraphOpen: true, tourDone: true })
+    expect(JSON.parse(storage.data.get(UI_STORAGE_KEY)!).state).toEqual({ gitGraphOpen: true, tourDone: true, layout: DEFAULT_LAYOUT })
   })
 
   it('reads a saved tourDone back, and ignores nonsense', async () => {
@@ -90,6 +90,31 @@ describe('uiStore', () => {
     storage.setItem(UI_STORAGE_KEY, JSON.stringify({ state: { tourDone: 1 }, version: 1 }))
     await useUiStore.persist.rehydrate()
     expect(useUiStore.getState().tourDone).toBe(false)
+  })
+
+  it('saves panel sizes inside their limits, and "Default view" clears them all', () => {
+    const storage = fakeStorage()
+    g.localStorage = storage
+    expect(isDefaultLayout(useUiStore.getState().layout)).toBe(true)
+    useUiStore.getState().setLayout('left', 400)
+    useUiStore.getState().setLayout('output', 99999)
+    expect(useUiStore.getState().layout).toMatchObject({ left: 400, output: LAYOUT_LIMITS.output.max })
+    expect(JSON.parse(storage.data.get(UI_STORAGE_KEY)!).state.layout.left).toBe(400)
+    expect(isDefaultLayout(useUiStore.getState().layout)).toBe(false)
+    useUiStore.getState().resetLayout()
+    expect(useUiStore.getState().layout).toEqual(DEFAULT_LAYOUT)
+  })
+
+  it('resets one panel with null, and ignores bad saved sizes on rehydrate', async () => {
+    const storage = fakeStorage()
+    g.localStorage = storage
+    useUiStore.getState().setLayout('right', 500)
+    useUiStore.getState().setLayout('right', null)
+    expect(useUiStore.getState().layout.right).toBeNull()
+
+    storage.setItem(UI_STORAGE_KEY, JSON.stringify({ state: { layout: { left: 350, right: 'wide', graph: 5, output: -1, chat: null } }, version: 1 }))
+    await useUiStore.persist.rehydrate()
+    expect(useUiStore.getState().layout).toEqual({ ...DEFAULT_LAYOUT, left: 350 })
   })
 
   it('keeps working when storage throws', () => {

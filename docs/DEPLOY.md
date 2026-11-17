@@ -47,6 +47,28 @@ Checked by Claude on 2026-11-13 (Phase 8): `npm test` (322 passed), `npm run bui
 3. Enter the settings from the table above and save. Every push to `main` then deploys on its own.
 4. After the first deploy, open the `*.pages.dev` address and repeat the step 4 check above on the live site.
 
+## CI and CD on GitHub
+
+Two workflows in `.github/workflows/` check and publish the site automatically. Claude wrote them but does not run or trigger them. You turn them on.
+
+| Workflow | Runs when | What it does |
+| --- | --- | --- |
+| `ci.yml` (CI, "continuous integration") | a push to any branch except `main`, and every pull request into `main` | `npm ci`, typecheck, `npm test`, `npm run build`. Red on GitHub if any step fails |
+| `deploy.yml` (CD, "continuous delivery") | a push to `main`, or "Run workflow" in the Actions tab | runs `ci.yml` first, then, only if it is green, tells Cloudflare Pages to publish `main` |
+
+Why a "deploy hook" and not a file upload: your Pages project is connected to GitHub, and Cloudflare cannot switch such a project to direct uploads. A deploy hook is a private URL; calling it makes Cloudflare build and publish the latest `main`, with the build settings you already entered.
+
+One-time setup (you do this, once):
+
+1. Cloudflare dashboard, Workers & Pages, your project, Settings, Builds, **Deploy hooks**: add a hook for the `main` branch and copy its URL.
+2. GitHub, your repository, Settings, Secrets and variables, Actions, **New repository secret**: name `CLOUDFLARE_DEPLOY_HOOK`, value the URL. Treat the URL like a password: anyone who has it can trigger a build.
+3. Back in Cloudflare, Settings, Builds, **Automatic deployments** (production branch): turn them off. Without this, Cloudflare builds on every push by itself and every change is published twice, with no CI gate.
+4. Optional but recommended: GitHub, Settings, Branches, add a rule for `main` that requires the **CI / Typecheck, test, build** check, so a red pull request cannot be merged.
+
+Until step 2 is done, the Deploy workflow runs CI, then prints "Deploy skipped" and stops without failing.
+
+If the repository was renamed, nothing in these files needs changing: they use no repository name. The only name in them is the site address `https://synccrafts.pages.dev` in `deploy.yml`, shown as the environment link.
+
 ## If you choose Vercel
 
 Import the repo at vercel.com/new. It detects Vite and fills in the same settings. To get the same caching, add a `vercel.json` with a `headers` rule for `/assets/(.*)`; ask Claude to write it.

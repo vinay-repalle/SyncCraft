@@ -8,9 +8,33 @@ import type { Zone } from './nextAction'
 // which zone of My view is showing (Phase 9).
 // Keeping it in a store (instead of inside App) lets any highlighted term open its article from anywhere.
 //
-// Only `gitGraphOpen` (Phase 7a) and `tourDone` (Phase 9) are saved, under their own localStorage
+// Only `gitGraphOpen` (Phase 7a), `tourDone` (Phase 9) and the panel sizes (`layout`) are saved, under their own localStorage
 // key, so they are remembered across reloads but are not part of the progress file. The view and
 // article are not saved, so a reload starts on My view.
+// Sizes of the My view panels in pixels, set by dragging the dividers. null means "use the
+// default size", so "Default view" only has to set everything back to null.
+export type Layout = {
+  left: number | null // width of the board and chat column
+  right: number | null // width of the pipeline column
+  graph: number | null // width of the Git graph beside the editor
+  output: number | null // height of the Terminal / Pull request box
+  chat: number | null // height of Team chat under the board
+}
+export type LayoutKey = keyof Layout
+
+export const DEFAULT_LAYOUT: Layout = { left: null, right: null, graph: null, output: null, chat: null }
+
+// Smallest and largest size a divider can give each panel, so none can be dragged shut.
+export const LAYOUT_LIMITS: Record<LayoutKey, { min: number; max: number }> = {
+  left: { min: 240, max: 560 },
+  right: { min: 300, max: 720 },
+  graph: { min: 160, max: 520 },
+  output: { min: 120, max: 560 },
+  chat: { min: 120, max: 520 },
+}
+
+export const isDefaultLayout = (layout: Layout): boolean => (Object.keys(DEFAULT_LAYOUT) as LayoutKey[]).every((k) => layout[k] === null)
+
 type UiState = {
   view: ViewId
   guideSlug: string | null
@@ -20,6 +44,9 @@ type UiState = {
   tourStep: number | null
   // Below the wide layout, My view shows one zone at a time.
   playZone: Zone
+  layout: Layout
+  setLayout: (key: LayoutKey, size: number | null) => void
+  resetLayout: () => void
   setView: (view: ViewId) => void
   openGuide: (slug: string) => void
   closeGuide: () => void
@@ -69,6 +96,10 @@ export const useUiStore = create<UiState>()(
       tourDone: false,
       tourStep: null,
       playZone: 'code',
+      layout: DEFAULT_LAYOUT,
+      setLayout: (key, size) =>
+        set((s) => ({ layout: { ...s.layout, [key]: size === null ? null : Math.round(Math.min(LAYOUT_LIMITS[key].max, Math.max(LAYOUT_LIMITS[key].min, size))) } })),
+      resetLayout: () => set({ layout: DEFAULT_LAYOUT }),
       setView: (view) => set({ view }),
       openGuide: (guideSlug) => set({ view: 'guide', guideSlug }),
       closeGuide: () => set({ guideSlug: null }),
@@ -84,12 +115,20 @@ export const useUiStore = create<UiState>()(
       name: UI_STORAGE_KEY,
       version: 1,
       storage: createJSONStorage(() => safeLocalStorage),
-      partialize: (s) => ({ gitGraphOpen: s.gitGraphOpen, tourDone: s.tourDone }),
+      partialize: (s) => ({ gitGraphOpen: s.gitGraphOpen, tourDone: s.tourDone, layout: s.layout }),
       // Accept only real booleans from storage; anything else keeps the default.
       merge: (saved, current) => {
-        const { gitGraphOpen, tourDone } = (saved ?? {}) as { gitGraphOpen?: unknown; tourDone?: unknown }
+        const { gitGraphOpen, tourDone, layout } = (saved ?? {}) as { gitGraphOpen?: unknown; tourDone?: unknown; layout?: Record<string, unknown> }
+        // Keep each saved size only if it is a real number inside its limits.
+        const sizes = Object.fromEntries(
+          (Object.keys(DEFAULT_LAYOUT) as LayoutKey[]).map((k) => {
+            const v = layout?.[k]
+            return [k, typeof v === 'number' && Number.isFinite(v) && v >= LAYOUT_LIMITS[k].min && v <= LAYOUT_LIMITS[k].max ? v : null]
+          }),
+        ) as Layout
         return {
           ...current,
+          layout: sizes,
           ...(typeof gitGraphOpen === 'boolean' ? { gitGraphOpen } : {}),
           ...(typeof tourDone === 'boolean' ? { tourDone } : {}),
         }

@@ -1,0 +1,51 @@
+# CD (continuous delivery): when main changes and CI passes, the site is published.
+#
+# SyncCraft is hosted on Cloudflare Pages. Cloudflare builds the site itself, so this workflow
+# does not upload files. It checks the code (ci.yml), and only if that is green it calls the
+# project's "deploy hook", a private URL that tells Cloudflare Pages to build and publish main.
+# That way a broken main never goes live.
+#
+# One-time setup is in docs/DEPLOY.md ("CI and CD on GitHub"): create the deploy hook in
+# Cloudflare, save it as the repository secret CLOUDFLARE_DEPLOY_HOOK, and turn off Cloudflare's
+# own automatic builds so only this workflow publishes. Until the secret exists, the deploy job
+# says so and stops without failing.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: # also lets you run it by hand from the Actions tab
+
+# Deploys run one at a time and are never cancelled half way.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    name: Publish to Cloudflare Pages
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: production
+      url: https://synccrafts.pages.dev
+    steps:
+      - name: Publish
+        env:
+          # Secrets are passed through the environment, never printed.
+          DEPLOY_HOOK: ${{ secrets.CLOUDFLARE_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$DEPLOY_HOOK" ]; then
+            echo "::notice title=Deploy skipped::Add the CLOUDFLARE_DEPLOY_HOOK secret to publish from GitHub. See docs/DEPLOY.md."
+            exit 0
+          fi
+          curl --fail --silent --show-error --request POST "$DEPLOY_HOOK" > /dev/null
+          echo "Cloudflare Pages was asked to build and publish main."

@@ -5,8 +5,9 @@ import { downloadProgressFile, parseProgressFile } from '../utils/progressFile'
 
 type Message = { kind: 'ok' | 'error'; text: string }
 
-const BUTTON =
-  'flex h-8 items-center gap-2 whitespace-nowrap rounded-control border border-line bg-card px-3 text-body text-ink transition-colors hover:bg-raised'
+// Rows in the More menu (Header). The menu stays open while a file is picked, so the file input
+// below is still mounted when its change event arrives.
+const ITEM = 'flex h-8 w-full items-center gap-2 whitespace-nowrap rounded-tag px-2 text-body text-ink transition-colors hover:bg-raised'
 
 export function ProgressTransfer() {
   const replaceProgress = useProgressStore((s) => s.replaceProgress)
@@ -43,37 +44,20 @@ export function ProgressTransfer() {
   }
 
   return (
-    <div className="relative flex shrink-0 items-center gap-3">
-      {/* The status sits below the buttons instead of beside them, so a long message
-          can never squeeze the role bar. The live region stays in the page at all
-          times so screen readers announce changes to it. */}
-      <div role="status" className="absolute top-full right-0 z-10 mt-2">
-        {message && (
-          <p
-            className={`w-max max-w-md rounded-control border border-line bg-card px-3 py-2 text-caption shadow-small ${
-              message.kind === 'error' ? 'text-fail' : 'text-ink'
-            }`}
-          >
-            {message.text}
-          </p>
-        )}
-      </div>
-      <button type="button" className={BUTTON} onClick={handleExport}>
-        <Download size={16} strokeWidth={1.5} />
+    <div className="flex flex-col">
+      <button type="button" className={ITEM} onClick={handleExport}>
+        <Download size={16} strokeWidth={1.5} aria-hidden />
         Export progress
       </button>
-      <button type="button" className={BUTTON} onClick={() => fileInput.current?.click()}>
-        <Upload size={16} strokeWidth={1.5} />
+      <button type="button" className={ITEM} onClick={() => fileInput.current?.click()}>
+        <Upload size={16} strokeWidth={1.5} aria-hidden />
         Import progress
       </button>
-      <input
-        ref={fileInput}
-        type="file"
-        accept=".json,application/json"
-        className="sr-only"
-        tabIndex={-1}
-        onChange={handleFile}
-      />
+      <input ref={fileInput} type="file" accept=".json,application/json" className="sr-only" tabIndex={-1} onChange={handleFile} />
+      {/* The live region stays in the page at all times so screen readers announce changes to it. */}
+      <p role="status" className={`px-2 text-caption ${message ? 'mt-1 pb-1' : ''} ${message?.kind === 'error' ? 'text-fail' : 'text-ink-2'}`}>
+        {message?.text}
+      </p>
     </div>
   )
 }
