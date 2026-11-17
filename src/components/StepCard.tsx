@@ -1,4 +1,4 @@
-import { ArrowRight, Award, Check, CircleAlert, FastForward, Lightbulb, LocateFixed } from 'lucide-react'
+import { ArrowRight, Award, Check, ChevronLeft, ChevronRight, CircleAlert, FastForward, Lightbulb, LocateFixed } from 'lucide-react'
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { ROLE_INFO } from '../app/nav'
 import { LEVEL_IDS, type PlayableRole } from '../content'
@@ -7,7 +7,7 @@ import type { LevelRunner } from '../engine/levelRunner'
 import { useCurrentStep, useLevelStore } from '../store/levelStore'
 import { describeAction, editTarget } from '../store/nextAction'
 import { useProgressStore } from '../store/progressStore'
-import { doneLabel, justCompleted } from '../utils/stepFeedback'
+import { doneLabel, justCompleted, liveIndex, moveReview } from '../utils/stepFeedback'
 import { FirstTimeCard } from './jargon/TermCard'
 import { JargonText } from './jargon/JargonText'
 import { showNextAction, useNextAction } from './spotlight'
@@ -33,6 +33,11 @@ export function StepCard() {
   const step = useCurrentStep()
   // Remember which step's hint is open, so it closes by itself when the step changes.
   const [hintFor, setHintFor] = useState<string | null>(null)
+  // Looking back: the earlier step being read (0-based), or null on the live step. Read-only.
+  const [viewing, setViewing] = useState<number | null>(null)
+  const stepId = step?.id
+  // A new level, seat or live step brings the learner back to the live step.
+  useEffect(() => setViewing(null), [runner, stepId])
 
   // Phase 7e: when steps complete, their bars grow in and a short "Step N done" line rises in,
   // once. `seen` remembers what was done last time; it resets when another level or seat loads.
@@ -57,16 +62,31 @@ export function StepCard() {
   const total = runner.level.steps.length
   const doneCount = snapshot.completedStepIds.length
   const levelsDone = LEVEL_IDS.filter((id) => completed[id]?.[playRole as PlayableRole]).length
+  const order = runner.level.steps.map((x) => x.id)
+  const live = liveIndex(order, step?.id ?? null)
+  const reviewing = viewing !== null && viewing < live ? runner.level.steps[viewing] : null
+  const roleLabel = (id: string) => ROLE_INFO.find((r) => r.id === id)?.label
 
   return (
     <div className="rounded-tag border border-line bg-raised p-4">
       <ol aria-label={`${doneCount} of ${total} steps done`} className="mb-3 flex gap-1">
-        {runner.level.steps.map((s) => (
-          <li
-            key={s.id}
-            className={`h-1 flex-1 rounded-tag ${snapshot.completedStepIds.includes(s.id) ? 'bg-accent' : s.id === step?.id ? 'bg-ink-3' : 'bg-line'} ${done?.ids.includes(s.id) ? 'motion-grow-x' : ''}`}
-          />
-        ))}
+        {runner.level.steps.map((s, i) => {
+          const bar = `h-1 w-full rounded-tag ${i === viewing ? 'bg-ink' : snapshot.completedStepIds.includes(s.id) ? 'bg-accent' : s.id === step?.id ? 'bg-ink-3' : 'bg-line'} ${done?.ids.includes(s.id) ? 'motion-grow-x' : ''}`
+          return (
+            <li key={s.id} className="flex-1">
+              {i < live ? (
+                // An earlier step: a taller click target around the thin bar, to look back at it.
+                <button type="button" aria-label={`Look back at step ${i + 1}`} aria-current={i === viewing || undefined} title={`Step ${i + 1}`} onClick={() => setViewing(i === viewing ? null : i)} className="flex h-4 w-full items-center">
+                  <span className={bar} />
+                </button>
+              ) : (
+                <div className="flex h-4 items-center">
+                  <span className={bar} />
+                </div>
+              )}
+            </li>
+          )
+        })}
       </ol>
 
       {done && (
@@ -77,7 +97,59 @@ export function StepCard() {
         </p>
       )}
 
-      {!step ? (
+      {/* Back and forward through the steps you have done. Forward is off on the live step. */}
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-meta text-ink-3">
+          {reviewing
+            ? `Step ${viewing! + 1} of ${total} · Done · ${roleLabel(reviewing.role)}`
+            : !step
+              ? `All ${total} steps done`
+              : `Step ${doneCount + 1} of ${total}${step.auto ? ' · Runs on its own' : ''} · ${roleLabel(step.role)}`}
+        </p>
+        <div className="flex shrink-0 items-center">
+          {[-1, 1].map((dir) => {
+            const disabled = dir === -1 ? live === 0 || viewing === 0 : viewing === null
+            const Icon = dir === -1 ? ChevronLeft : ChevronRight
+            return (
+              <button
+                key={dir}
+                type="button"
+                disabled={disabled}
+                aria-label={dir === -1 ? 'Previous step' : 'Next step'}
+                title={dir === -1 ? 'Look at the step before' : 'Look at the step after'}
+                onClick={() => setViewing(moveReview(viewing, live, dir as -1 | 1))}
+                className="flex h-6 w-6 items-center justify-center rounded-tag text-ink-2 transition-colors hover:bg-card hover:text-ink disabled:cursor-not-allowed disabled:text-ink-3 disabled:hover:bg-transparent"
+              >
+                <Icon size={16} strokeWidth={1.5} aria-hidden />
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {reviewing ? (
+        // Read-only: what an earlier step asked, and one answer that worked. Nothing here changes the game.
+        <>
+          <p className="mt-1 text-lead text-ink">
+            <JargonText text={reviewing.prompt} terms={reviewing.terms} />
+          </p>
+          <p className="mt-2 flex items-center gap-1 text-caption text-pass">
+            <Check size={16} strokeWidth={1.5} aria-hidden />
+            Done. You can read it again, but nothing here changes your progress.
+          </p>
+          {reviewing.kind === 'git' && reviewing.autoFill && reviewing.autoFill.length < 120 && (
+            <p className="mt-2 text-caption text-ink-2">
+              One command that works: <code className="font-mono text-ink">{reviewing.autoFill}</code>
+            </p>
+          )}
+          <div className="mt-3">
+            <button type="button" className={PANEL_BUTTON} onClick={() => setViewing(null)}>
+              {step ? `Back to step ${doneCount + 1}` : 'Back to level complete'}
+              <ArrowRight size={16} strokeWidth={1.5} />
+            </button>
+          </div>
+        </>
+      ) : !step ? (
         // Phase 9: the level-complete moment. The Mistakes replay opens first, so the moment waits
         // behind it and plays when the replay closes (the new key remounts it). It plays once:
         // the medal pops, the line rises, then the buttons. Under reduced motion it just shows.
@@ -106,11 +178,6 @@ export function StepCard() {
         </div>
       ) : (
         <>
-          <p className="text-meta text-ink-3">
-            Step {doneCount + 1} of {total}
-            {step.auto ? ' · Runs on its own' : ''}
-            {` · ${ROLE_INFO.find((r) => r.id === step.role)?.label}`}
-          </p>
           <p className="mt-1 text-lead text-ink">
             <JargonText text={step.prompt} terms={step.terms} />
           </p>

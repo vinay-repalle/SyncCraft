@@ -17,3 +17,17 @@ export function doneLabel(numbers: readonly number[]): string {
   if (consecutive) return `Steps ${numbers[0]} to ${numbers[numbers.length - 1]} done`
   return `Steps ${numbers.slice(0, -1).join(', ')} and ${numbers[numbers.length - 1]} done`
 }
+
+// Looking back at earlier steps. `viewing` is the step being reviewed (0-based), or null when the
+// learner is on the live step. Only steps before the live one can be reviewed, and reviewing
+// never changes the game: it only changes what the step card shows.
+
+// Position of the live step in level order. When the level is finished there is none, so it is the
+// length: one past the last step.
+export const liveIndex = (order: readonly string[], currentId: string | null): number => (currentId === null ? order.length : Math.max(0, order.indexOf(currentId)))
+
+// Moves one step back (-1) or forward (+1). Landing on the live step returns null.
+export function moveReview(viewing: number | null, live: number, direction: -1 | 1): number | null {
+  const next = Math.min(live, Math.max(0, (viewing ?? live) + direction))
+  return next >= live ? null : next
+}
