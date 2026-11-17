@@ -395,3 +395,18 @@ describe('Level 1: git terminal output through the runner', () => {
     expect(r.act(git('git frobnicate')).ok).toBe(false)
   })
 })
+
+describe('spacing in a typed answer', () => {
+  it('level 2 accepts the contract line without the space after the colon', () => {
+    const r = new LevelRunner(getLevel(2)!)
+    r.act({ type: 'chat', chatId: 'contract-talk', replyId: r.currentStep()!.chat!.replies[0].id })
+    r.act(git('git pull origin main'))
+    r.act({ type: 'moveTicket', ticketId: 'ORD-31', to: 'inprogress' })
+    r.act(git('git checkout -b feature/ORD-31-delivery-estimate'))
+    expect(r.currentStep()?.id).toBe('write-contract')
+    const path = 'docs/orders-contract.json'
+    const typed = '{\n  "endpoint": "GET /api/orders/:id",\n  "response": {\n    "id": "string",\n    "status": "string",\n    "estimatedMinutes":"number"\n  }\n}\n'
+    r.act({ type: 'editFile', path, content: typed })
+    expect(r.currentStep()?.id).toBe('write-mock')
+  })
+})

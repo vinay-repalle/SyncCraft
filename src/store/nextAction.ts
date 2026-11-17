@@ -110,17 +110,35 @@ const TOOL_LABEL: Record<GitTool, string> = {
 export const gitToolLabel = (tool: GitTool) => TOOL_LABEL[tool]
 
 // The control in words, for the step card. Colour and outline are never the only signal.
-export function describeAction(action: NextAction, statusLabel: (s: TicketStatus) => string): string {
+export function describeAction(action: NextAction, statusLabel: (s: TicketStatus) => string, filePath?: string): string {
   switch (action.kind) {
     case 'chat':
       return 'Choose a reply in Team chat'
     case 'ticket':
       return `Move ${action.ticketId} to ${statusLabel(action.to)} on the board`
     case 'editor':
-      return 'Edit the code in the editor'
+      return filePath ? `Edit ${filePath} in the editor. Your typing saves by itself` : 'Edit the code in the editor'
     case 'git':
       return `Use the ${TOOL_LABEL[action.tool]} button`
     case 'merge':
       return 'Merge the pull request on the Pull request tab'
   }
+}
+
+// The file a code step is about, or undefined when the step is not about one file.
+export const editTarget = (step: Step | null): string | undefined => (step && !step.auto && step.check?.type === 'fileContains' ? step.check.path : undefined)
+
+// What to tell the learner under the editor on a code step. The editor has no Save button: every
+// keystroke is saved, and the step finishes the moment the file has the change. Nothing on screen
+// said so, which left learners waiting for a button that does not exist. This names the state:
+//   wrong-file: the open tab is not the file the step is about
+//   untouched:  the right file is open and has not been changed yet
+//   mismatch:   the file was changed, but the step's check does not pass yet
+export type EditHint = { state: 'wrong-file' | 'untouched' | 'mismatch'; target: string }
+
+export function editHint(step: Step | null, files: Record<string, string>, committed: Record<string, string>, openPath: string): EditHint | null {
+  const target = editTarget(step)
+  if (!target) return null
+  if (openPath !== target) return { state: 'wrong-file', target }
+  return { state: files[target] === committed[target] ? 'untouched' : 'mismatch', target }
 }

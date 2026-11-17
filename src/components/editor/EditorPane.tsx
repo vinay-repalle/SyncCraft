@@ -1,7 +1,8 @@
-import { GitGraph as GitGraphIcon } from 'lucide-react'
+import { CircleAlert, GitGraph as GitGraphIcon, Save } from 'lucide-react'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { hasConflictMarkers } from '../../engine/conflictResolve'
 import { useCurrentStep, useLevelStore } from '../../store/levelStore'
+import { editHint } from '../../store/nextAction'
 import { useUiStore } from '../../store/uiStore'
 import { spotClass, spotProps, useNextAction } from '../spotlight'
 import { ConflictResolver } from './ConflictResolver'
@@ -46,6 +47,9 @@ export function EditorPane() {
   const resolving = conflicted && textFor !== path
   const merge = runner?.git.graphState().merge
   const theirsAuthor = merge ? (runner?.git.getCommit(merge.theirs)?.author ?? null) : null
+
+  // Code steps: say that typing saves by itself, and what is left to do (see editHint).
+  const hint = resolving ? null : editHint(step, files, runner?.git.headCommit().files ?? {}, path)
 
   return (
     <div {...spotProps(spot)} className={`flex min-h-0 flex-1 flex-col overflow-hidden rounded-tag border border-line${spotClass(spot)}`}>
@@ -109,6 +113,30 @@ export function EditorPane() {
           </Suspense>
         )}
       </div>
+      {hint && (
+        // There is no Save button: every keystroke is saved and the step finishes by itself. This line says so.
+        <p role="status" className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-line bg-raised px-3 py-2 text-caption text-ink-2">
+          {hint.state === 'wrong-file' ? (
+            <>
+              <CircleAlert size={16} strokeWidth={1.5} className="shrink-0" aria-hidden />
+              <span>This step is about {hint.target}.</span>
+              <button type="button" onClick={() => setChosen(hint.target)} className="flex h-6 items-center rounded-tag px-1.5 text-accent transition-colors hover:bg-card">
+                Open {baseName(hint.target)}
+              </button>
+            </>
+          ) : hint.state === 'untouched' ? (
+            <>
+              <Save size={16} strokeWidth={1.5} className="shrink-0" aria-hidden />
+              <span>Saves as you type. There is no Save button. This step finishes by itself when {baseName(hint.target)} has the change.</span>
+            </>
+          ) : (
+            <>
+              <CircleAlert size={16} strokeWidth={1.5} className="shrink-0" aria-hidden />
+              <span>Saved. It does not match the task yet. Check spelling, quotes and commas, or open the hint above.</span>
+            </>
+          )}
+        </p>
+      )}
     </div>
   )
 }

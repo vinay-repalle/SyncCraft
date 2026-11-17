@@ -7,6 +7,7 @@
 import { Emitter } from './events'
 import { GitSim, type Files, type PullRequest } from './gitSim'
 import { JiraSim } from './jiraSim'
+import { looseIncludes } from './looseText'
 import { runTests, type TestReport } from './testRunner'
 import type {
   Action,
@@ -372,7 +373,7 @@ export class LevelRunner {
       case 'fileContains': {
         const content = this.git.readFile(check.path)
         if (content === undefined) return false
-        return (check.includes === undefined || content.includes(check.includes)) && (check.excludes === undefined || !content.includes(check.excludes))
+        return (check.includes === undefined || looseIncludes(content, check.includes)) && (check.excludes === undefined || !looseIncludes(content, check.excludes))
       }
       case 'branchHasCommit':
         return this.git.ownCommits().filter((c) => !isVagueCommitMessage(c.message)).length >= (check.minCount ?? 1)

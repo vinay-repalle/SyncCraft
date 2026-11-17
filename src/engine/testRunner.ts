@@ -2,6 +2,7 @@
 // the learner's whole project. Instead each test is a small rule about the files
 // ("this file must contain this text"). The report reads like a real test run.
 import type { Files } from './gitSim'
+import { looseIncludes } from './looseText'
 
 export type TestRule =
   | { type: 'includes'; path: string; text: string }
@@ -27,9 +28,9 @@ function evaluate(rule: TestRule, files: Files): string | null {
     case 'fileExists':
       return null
     case 'includes':
-      return content.includes(rule.text) ? null : `Expected ${rule.path} to contain "${rule.text}".`
+      return looseIncludes(content, rule.text) ? null : `Expected ${rule.path} to contain "${rule.text}".`
     case 'excludes':
-      return content.includes(rule.text) ? `Expected ${rule.path} not to contain "${rule.text}", but it does.` : null
+      return looseIncludes(content, rule.text) ? `Expected ${rule.path} not to contain "${rule.text}", but it does.` : null
     case 'matches':
       try {
         return new RegExp(rule.pattern, rule.flags).test(content) ? null : `Expected ${rule.path} to match /${rule.pattern}/.`

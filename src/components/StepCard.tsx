@@ -5,7 +5,7 @@ import { LEVEL_IDS, type PlayableRole } from '../content'
 import { COLUMNS } from '../engine/jiraSim'
 import type { LevelRunner } from '../engine/levelRunner'
 import { useCurrentStep, useLevelStore } from '../store/levelStore'
-import { describeAction } from '../store/nextAction'
+import { describeAction, editTarget } from '../store/nextAction'
 import { useProgressStore } from '../store/progressStore'
 import { doneLabel, justCompleted } from '../utils/stepFeedback'
 import { FirstTimeCard } from './jargon/TermCard'
@@ -119,7 +119,7 @@ export function StepCard() {
           {next && (
             <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-caption text-ink-2">
               <span>
-                <span className="font-medium text-ink">Next:</span> {describeAction(next, statusLabel)}
+                <span className="font-medium text-ink">Next:</span> {describeAction(next, statusLabel, editTarget(step))}
               </span>
               <button
                 type="button"
@@ -130,6 +130,10 @@ export function StepCard() {
                 Show me
               </button>
             </p>
+          )}
+          {/* A step that runs on its own has no control to use. Say so, so the learner does not wait for a button. */}
+          {step.auto && !next && (
+            <p className="mt-2 text-caption text-ink-2">Nothing to do here. This runs by itself. Watch the Pipeline panel, and the next step starts when it finishes.</p>
           )}
           {hintFor === step.id && step.hint && <p className="mt-2 text-caption text-ink-2">{step.hint}</p>}
           {/* Phase 9: keyed by the notice counter, so each new warning shakes once, even a repeat. */}

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { getLevel, LEVEL_IDS, type PlayableRole } from '../content'
 import { LevelRunner } from '../engine/levelRunner'
 import type { Step } from '../engine/types'
-import { describeAction, nextAction, nextActionFor, repoFacts, zoneOf, type RepoFacts } from './nextAction'
+import { describeAction, editHint, nextAction, nextActionFor, repoFacts, zoneOf, type RepoFacts } from './nextAction'
 
 const clean: RepoFacts = { merging: false, markersLeft: false, uncommitted: false, unpushed: false }
 const step = (over: Partial<Step>): Step => ({ id: 's', role: 'frontend', kind: 'git', prompt: 'Do it', ...over })
@@ -85,4 +85,28 @@ describe('every learner step has a place to act', () => {
       })
     }
   }
+})
+
+describe('editHint and the file in the Next line', () => {
+  const codeStep = step({ kind: 'code', check: { type: 'fileContains', path: 'docs/a.json', includes: 'x' } })
+  const files = { 'docs/a.json': 'start', 'src/b.js': 'b' }
+
+  it('names the file in the Next line', () => {
+    expect(describeAction({ kind: 'editor' }, (s) => s, 'docs/a.json')).toContain('docs/a.json')
+    expect(describeAction({ kind: 'editor' }, (s) => s)).toBe('Edit the code in the editor')
+  })
+
+  it('says which file to open when another tab is showing', () => {
+    expect(editHint(codeStep, files, files, 'src/b.js')).toEqual({ state: 'wrong-file', target: 'docs/a.json' })
+  })
+
+  it('tells untouched from edited-but-not-matching', () => {
+    expect(editHint(codeStep, files, files, 'docs/a.json')?.state).toBe('untouched')
+    expect(editHint(codeStep, { ...files, 'docs/a.json': 'start\nmore' }, files, 'docs/a.json')?.state).toBe('mismatch')
+  })
+
+  it('gives nothing for steps that are not about one file', () => {
+    expect(editHint(step({ kind: 'git', check: { type: 'pushed' } }), files, files, 'docs/a.json')).toBeNull()
+    expect(editHint(null, files, files, 'docs/a.json')).toBeNull()
+  })
 })
